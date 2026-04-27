@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * hive-mcp-zk-attestation — RFC-stage MCP shim
+ * hive-mcp-zk-attestation — RFC-stage MCP shim (v0.1.1)
  *
  * Verifiable agent state attestations for the autonomous agent economy.
- * Groth16 / Plonk proofs of agent state hash + DID, anchored to Base.
- * Aleo snarkVM-compatible verification keys are emittable. Ecosystem-neutral.
+ * Primary verification target: Aleo snarkVM (Varuna over BLS12-377), with
+ * native Hive verification next. Groth16 / Plonk are research-stage only.
  *
  * Attestation-only. No asset bridging. No custody. No wrapped value.
  *
@@ -34,9 +34,9 @@ const BACKEND_PENDING = {
 
 const HIVE_AGENT_CFG = {
   name: 'hive-mcp-zk-attestation',
-  description: 'RFC-stage MCP shim. Verifiable agent state attestations (Groth16/Plonk) anchored to Base. Aleo snarkVM-compatible verification keys are emittable. Attestation-only — no asset bridging, no custody.',
+  description: 'Hive ZK attestation MCP server. Agent state proofs targeting Aleo snarkVM (Varuna/BLS12-377). RFC-stage, attestation-only, no asset bridging.',
   url: 'https://hive-mcp-gateway.onrender.com/zk-attestation',
-  version: '0.1.0',
+  version: '0.1.1',
   repoUrl: 'https://github.com/srotzin/hive-mcp-zk-attestation',
   did: 'did:hive:zk-attestation',
   gatewayUrl: 'https://hive-mcp-gateway.onrender.com',
@@ -46,26 +46,26 @@ const HIVE_AGENT_CFG = {
 const TOOLS = [
   {
     name: 'zk_attest_agent_state',
-    description: 'Produce a Groth16 proof of an agent state hash + DID. Attestation-only — emits a proof, not a token; no value crosses chains. Cost: $0.05 USDC on Base. Backend RFC-stage; returns backend_pending until rails land.',
+    description: 'Produce a zero-knowledge attestation of an agent state hash + DID. Primary verification target is Aleo snarkVM (Varuna over BLS12-377); native Hive verification is next. Attestation-only — emits a proof, not a token; no value crosses chains. Cost: $0.05 USDC on Base. Backend RFC-stage; returns backend_pending until rails land.',
     inputSchema: {
       type: 'object',
       required: ['agent_did', 'state_hash'],
       properties: {
         agent_did: { type: 'string', description: 'DID of the agent whose state is being attested' },
         state_hash: { type: 'string', description: 'Hex-encoded 32-byte hash of the agent state (poseidon or sha256)' },
-        circuit: { type: 'string', description: 'Circuit identifier; defaults to groth16-bn254-agent-state-v1' },
+        circuit: { type: 'string', description: 'Circuit identifier; defaults to varuna-bls12377-agent-state-v1 (snarkVM-compatible)' },
         public_inputs: { type: 'array', items: { type: 'string' }, description: 'Optional public inputs as hex strings' },
       },
     },
   },
   {
     name: 'zk_verify_proof',
-    description: 'Verify a submitted proof against a known verification key. Returns boolean validity plus the verification key fingerprint. Free. Read-only — no settlement, no on-chain write.',
+    description: 'Verify a submitted attestation against a known verification key. Aleo snarkVM (Varuna/BLS12-377) is the primary verification target via the snark.verify opcode. Returns boolean validity plus the verification key fingerprint. Free. Read-only — no settlement, no on-chain write.',
     inputSchema: {
       type: 'object',
       required: ['proof', 'verification_key_id'],
       properties: {
-        proof: { type: 'string', description: 'Hex-encoded proof bytes (Groth16 or Plonk)' },
+        proof: { type: 'string', description: 'Hex-encoded proof bytes (Varuna; Groth16/Plonk research-stage only)' },
         verification_key_id: { type: 'string', description: 'Identifier of the verification key to check against' },
         public_inputs: { type: 'array', items: { type: 'string' }, description: 'Public inputs the proof was generated against' },
       },
@@ -73,7 +73,7 @@ const TOOLS = [
   },
   {
     name: 'zk_anchor_to_base',
-    description: 'Write a proof commitment (32-byte hash) to Base via the Hive gateway. Anchors the attestation; does not bridge value or custody assets. Cost: $0.02 USDC + L1 gas. Backend RFC-stage; returns backend_pending until rails land.',
+    description: 'Write an attestation commitment (32-byte hash) to Base via the Hive gateway. Anchors the attestation only; does not bridge value or move state to Aleo. Aleo snarkVM consumes the attestation independently via Leo programs (future hive-leo-circuits repo). Cost: $0.02 USDC + L1 gas. Backend RFC-stage; returns backend_pending until rails land.',
     inputSchema: {
       type: 'object',
       required: ['proof_commitment', 'agent_did'],
@@ -86,7 +86,7 @@ const TOOLS = [
   },
   {
     name: 'zk_list_circuits',
-    description: 'Enumerate supported circuits and their verification key fingerprints. Includes Groth16, Plonk, and Aleo snarkVM-compatible templates. Free. Read-only.',
+    description: 'Enumerate supported circuits and verification key fingerprints. Primary: Varuna over BLS12-377 (Aleo snarkVM-compatible). Research-stage: Groth16, Plonk. Future: Risc0, Plonky2. Free. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -110,18 +110,19 @@ const SERVICE_CFG = {
   shortName: 'HiveZKAttestation',
   title: 'hive-mcp-zk-attestation · Verifiable Agent State Attestations',
   tagline: 'Verifiable agent state attestations for the autonomous agent economy.',
-  description: 'RFC-stage MCP shim. Groth16 and Plonk proofs of agent state hash + DID, anchored to Base. Aleo snarkVM-compatible verification keys are emittable. Ecosystem-neutral. Attestation-only — no asset bridging, no custody, no wrapped value.',
+  description: 'Hive ZK attestation MCP server. Agent state proofs targeting Aleo snarkVM (Varuna/BLS12-377). RFC-stage, attestation-only, no asset bridging.',
   keywords: [
     'mcp', 'model-context-protocol', 'x402', 'a2a', 'agentic', 'ai-agent', 'autonomous-agent',
     'hive', 'hive-civilization',
-    'zk', 'zero-knowledge', 'zk-proof', 'groth16', 'plonk', 'snarkvm', 'aleo-compatible', 'risc0-compatible',
+    'zk', 'zero-knowledge', 'zk-proof',
+    'varuna', 'bls12-377', 'kzg10', 'marlin-ahp', 'leo-lang', 'snarkvm-compatible', 'aleo-mainnet', 'provable-sdk',
     'agent-attestation', 'agent-state-proof', 'verifiable-agent', 'private-agent-execution', 'agent-audit-trail',
     'autonomous-systems', 'dual-use', 'commercial-grade',
     'usdc', 'base', 'base-l2', 'real-rails', 'on-chain-anchoring',
   ],
   externalUrl: 'https://hive-mcp-gateway.onrender.com/zk-attestation',
   gatewayMount: '/zk-attestation',
-  version: '0.1.0',
+  version: '0.1.1',
   pricing: [
     { name: 'zk_attest_agent_state', priceUsd: 0.05, label: 'Attest agent state — $0.05 USDC on Base' },
     { name: 'zk_verify_proof', priceUsd: 0, label: 'Verify proof — free' },
@@ -175,7 +176,7 @@ async function executeTool(name, args) {
         const { data, status } = await hivePost('/v1/zk/attest', {
           agent_did: args.agent_did,
           state_hash: args.state_hash,
-          circuit: args.circuit || 'groth16-bn254-agent-state-v1',
+          circuit: args.circuit || 'varuna-bls12377-agent-state-v1',
           public_inputs: args.public_inputs || [],
         });
         return relayResponse(status, data);
@@ -215,12 +216,14 @@ async function executeTool(name, args) {
             status: 503,
             ...BACKEND_PENDING,
             stable_circuit_catalog: [
-              { id: 'groth16-bn254-agent-state-v1', proving_system: 'Groth16', curve: 'BN254', purpose: 'agent state hash + DID attestation' },
-              { id: 'plonk-bn254-tx-validity-v1', proving_system: 'Plonk', curve: 'BN254', purpose: 'transaction validity attestation' },
-              { id: 'snarkvm-aleo-compat-v1', proving_system: 'Aleo snarkVM-compatible', curve: 'BLS12-377', purpose: 'verification key portable to Aleo snarkVM' },
-              { id: 'risc0-compat-v1', proving_system: 'RISC Zero-compatible', curve: 'BabyBear', purpose: 'verification key portable to Risc0 zkVM' },
+              { id: 'varuna-bls12377-agent-state-v1', proving_system: 'Varuna (Marlin/AHP, KZG10)', curve: 'BLS12-377', status: 'primary', purpose: 'agent state hash + DID attestation; verifiable inside Aleo snarkVM via the snark.verify opcode' },
+              { id: 'hive-native-agent-state-v1', proving_system: 'Hive native (server-side)', curve: 'n/a', status: 'primary', purpose: 'verification at the Hive backend; ships with v0.1 spec finalization' },
+              { id: 'risc0-compat-v1', proving_system: 'RISC Zero-compatible', curve: 'BabyBear', status: 'future-research', purpose: 'researched verification target; not implemented' },
+              { id: 'plonky2-compat-v1', proving_system: 'Plonky2-compatible', curve: 'Goldilocks', status: 'future-research', purpose: 'researched verification target; not implemented' },
+              { id: 'groth16-bn254-agent-state-v1', proving_system: 'Groth16', curve: 'BN254', status: 'research', purpose: 'research-stage only; no native Aleo verification path (BN254 to BLS12-377 in-circuit verification is roughly 2M constraints and not shipped)' },
+              { id: 'plonk-bn254-tx-validity-v1', proving_system: 'Plonk', curve: 'BN254', status: 'research', purpose: 'research-stage only; not a first-class verification target' },
             ],
-            note: 'Catalog is stable across the v0.1 RFC. Verifier-side keys are publishable to ecosystem-neutral targets (Aleo snarkVM, Risc0). No co-branding implied.',
+            note: 'Catalog is stable across the v0.1 RFC. Primary verification target is Aleo snarkVM (Varuna over BLS12-377) consumed via Leo programs (future hive-leo-circuits repo); native Hive verification is next. Groth16 and Plonk are research-stage. Risc0 and Plonky2 are future research targets, not implemented. Aleo references describe an ecosystem-neutral verifier — no co-branding.',
           }, null, 2) };
         }
         return relayResponse(status, data);
@@ -250,7 +253,7 @@ app.post('/mcp', async (req, res) => {
         return res.json({ jsonrpc: '2.0', id, result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'hive-mcp-zk-attestation', version: '0.1.0', description: SERVICE_CFG.description },
+          serverInfo: { name: 'hive-mcp-zk-attestation', version: '0.1.1', description: SERVICE_CFG.description },
         } });
       case 'tools/list':
         return res.json({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
@@ -269,7 +272,7 @@ app.post('/mcp', async (req, res) => {
   }
 });
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'hive-mcp-zk-attestation', version: '0.1.0', backend: HIVE_BASE, backend_state: 'pending' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'hive-mcp-zk-attestation', version: '0.1.1', backend: HIVE_BASE, backend_state: 'pending' }));
 app.get('/.well-known/mcp.json', (req, res) => res.json({
   name: 'hive-mcp-zk-attestation',
   endpoint: '/mcp',

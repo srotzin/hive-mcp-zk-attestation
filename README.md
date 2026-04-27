@@ -1,8 +1,8 @@
 # hive-mcp-zk-attestation
 
-Verifiable agent state attestations for the autonomous agent economy. RFC-stage v0.1.0.
+Verifiable agent state attestations for the autonomous agent economy. RFC-stage v0.1.1.
 
-A Model Context Protocol shim that lets any autonomous agent emit a zero-knowledge proof of its internal state hash and DID, anchor a commitment to Base, and expose verification keys that are portable to ecosystem-neutral zk verifiers (Aleo snarkVM, Risc0, Plonky2). Attestation-only. No asset bridging. No custody. No wrapped value.
+A Model Context Protocol shim that lets any autonomous agent emit a zero-knowledge attestation of its internal state hash and DID. The primary verification target is Aleo snarkVM (Varuna over BLS12-377), with native Hive verification next, and Risc0 / Plonky2 referenced as future research targets. Attestation-only. No asset bridging. No custody. No wrapped value.
 
 Brand colour: Hive Civilization gold `#C08D23`.
 
@@ -13,9 +13,9 @@ An attestation primitive for autonomous agents. The shim exposes five MCP tools 
 1. The first agent was in a specific internal state, identified by a 32-byte hash.
 2. The state was held by a specific DID.
 3. A commitment to that proof has been anchored to Base at a known block.
-4. The verification key is reproducible on any compatible zk-VM.
+4. The verification path is reproducible against a public, ecosystem-neutral verifier.
 
-The agent never reveals its state. The verifier never learns more than the boolean result and the public inputs. The audit trail is anchored on a public chain. The verification key is portable.
+The agent never reveals its state. The verifier never learns more than the boolean result and the public inputs. The audit trail is anchored on a public chain. The verification key is portable to compatible verifiers — primarily Aleo snarkVM via Leo.
 
 ## Why it exists
 
@@ -23,36 +23,61 @@ Autonomous agents transact, hold state, and make decisions on behalf of users. E
 
 Zero-knowledge proofs are the standard cryptographic answer. The plumbing has not been wired into the MCP / A2A surface that agent runtimes already speak. This shim is that wiring.
 
-## Architecture
+## Interop targets
+
+Honest priority order. Every name below is a public, ecosystem-neutral verifier or a research direction. There is no co-branding, no partnership, and no shared roadmap with any of these projects.
+
+1. **Aleo snarkVM (Varuna over BLS12-377)** — primary. Aleo's native proof system is Varuna (a Marlin/AHP variant using KZG10 over BLS12-377). On-chain verification happens inside snarkVM via the `snark.verify` opcode (`synthesizer/program/src/logic/instruction/operation/snark_verify.rs`), which accepts Varuna proofs and verification keys. The TypeScript SDK `@provablehq/sdk` exposes `VerifyingKey.verify()` for client-side checks. Mainnet endpoint: `https://api.provable.com/v2`.
+2. **Native Hive verification** — proofs verified server-side at the Hive backend. Not yet rails-live; ships when the v0.1 spec is finalized and `/v1/zk/*` publishes.
+3. **Risc0** — researched, not implemented. Future verification target.
+4. **Plonky2** — researched, not implemented. Future verification target.
+
+### Architecture
 
 ```
-┌─────────────┐    state hash + DID     ┌───────────────────┐
-│ Agent (any) │ ─────────────────────▶  │  zk_attest        │
-└─────────────┘                         │  (Groth16 / Plonk)│
-                                        └─────────┬─────────┘
-                                                  │ proof
-                                                  ▼
-                                        ┌───────────────────┐
-                                        │  zk_anchor_to_base│
-                                        │  commitment → L2  │
-                                        └─────────┬─────────┘
-                                                  │ tx_hash
-                                                  ▼
-                                        ┌───────────────────┐
-                                        │  Base L2          │
-                                        │  (public anchor)  │
-                                        └─────────┬─────────┘
-                                                  │
-              verification key publishable to     │
-              ecosystem-neutral verifiers         │
-                                                  ▼
-            ┌──────────────────┬───────────────┬──────────────┐
-            │  Aleo snarkVM    │   Risc0 zkVM  │   Plonky2    │
-            │  (interop only)  │   (interop)   │   (interop)  │
-            └──────────────────┴───────────────┴──────────────┘
+┌─────────────┐    state hash + DID     ┌────────────────────────┐
+│ Agent (any) │ ─────────────────────▶  │  zk_attest_agent_state │
+└─────────────┘                         │  (attestation payload) │
+                                        └─────────────┬──────────┘
+                                                      │ commitment
+                                                      ▼
+                                        ┌────────────────────────┐
+                                        │  zk_anchor_to_base     │
+                                        │  commitment → Base L2  │
+                                        └─────────────┬──────────┘
+                                                      │ tx_hash
+                                                      ▼
+                                        ┌────────────────────────┐
+                                        │  Base L2 (anchor)      │
+                                        └─────────────┬──────────┘
+                                                      │
+                attestation consumed by               │
+                downstream verifier                   │
+                                                      ▼
+            ┌──────────────────────┬─────────────────────────┐
+            │  Aleo snarkVM        │  Native Hive backend    │
+            │  (Varuna/BLS12-377   │  (verification at       │
+            │  via Leo programs in │   hivemorph; not yet    │
+            │  hive-leo-circuits   │   rails-live)           │
+            │  — future repo)      │                         │
+            └──────────────────────┴─────────────────────────┘
 ```
 
-Hive emits the proof. Base anchors the commitment. Any verifier — including an Aleo snarkVM instance — can independently check the proof against the published verification key. The shim is the MCP-shaped front door; the cryptography itself is standard.
+Hive emits the attestation. Base anchors the commitment. Verification happens either (a) inside snarkVM via Leo programs that consume the attestation and call `snark.verify` against a Varuna verification key, or (b) inside the Hive backend once `/v1/zk/*` publishes. The Leo programs themselves will live in a separate `hive-leo-circuits` repository — that repo is future work and is not part of this shim.
+
+### Future research (Groth16 / Plonk)
+
+Earlier drafts of this shim referenced Groth16 over BN254 and Plonk as if they were first-class. They are not. Aleo's mainnet verification path is Varuna over BLS12-377, and a generic Groth16/BN254 → BLS12-377 verifier inside snarkVM would be roughly two million constraints — researched, not shipped. Groth16 and Plonk remain in this repo only as research-stage references for hypothetical bring-your-own-verifier integrations.
+
+## Known gotchas
+
+The whole point of v0.1.1 is honesty about where the integration actually is. Read this section before integrating.
+
+- **BLS12-377 keypair separation.** Aleo accounts are BLS12-377 scalar-field keypairs. They are not interoperable with the Base (W1) or Solana (B1) keys an agent may already hold. An agent that wants to verify attestations on Aleo needs a separate Aleo account.
+- **No native Groth16 verification on Aleo today.** A Groth16/BN254 proof cannot be verified inside snarkVM without a curve-translation circuit (~2M constraints). That circuit is researched, not implemented, and is not part of this shim.
+- **Leo deployment cost.** Deploying a Leo program to Aleo mainnet costs roughly 1.5 to 2 ALEO credits per program. The forthcoming `hive-leo-circuits` repository will carry that cost; this shim does not.
+- **Backend is RFC-stage.** Every paid tool returns 503 backend_pending until `/v1/zk/*` publishes. The tool surface, costs, and circuit catalog are stable across the v0.1 RFC.
+- **Attestation, not bridge.** No value moves between Base and Aleo. The shim emits proofs and commitments; nothing is wrapped, mirrored, or escrowed.
 
 ## What this is NOT
 
@@ -61,7 +86,7 @@ Stated explicitly so there is no ambiguity:
 - **Not a bridge.** No value, no token, no wrapped asset crosses any chain. The shim emits proofs and commitments, not balances.
 - **Not a custody layer.** The shim never holds keys for any chain on behalf of the caller. It does not hold user funds, token balances, or signing authority.
 - **Not a regulated activity.** Emitting a hash commitment to a public chain is not money transmission, securities issuance, or a regulated payment service.
-- **Not a partner integration.** Aleo snarkVM, Risc0, and Plonky2 are interoperability targets — public open-source verifiers. There is no co-branding, no joint product, no shared roadmap.
+- **Not a partner integration.** Aleo snarkVM, Risc0, and Plonky2 are interoperability targets — public open-source verifiers. There is no co-branding, no joint product, no shared roadmap, no Aleo logo usage, and no "powered by Aleo" claim.
 - **Not a product for any specific industry vertical.** The primitive is commercial dual-use: any autonomous agent that needs verifiable private state can use it.
 
 ## Threat model
@@ -73,16 +98,6 @@ The shim is designed against three concrete threats:
 3. **Audit trail without exposure.** Compliance-conscious operators can publish proof commitments to Base while keeping the underlying state private. The audit trail is verifiable; the data is not exposed.
 
 The shim does not defend against: a compromised agent forging its own state hash before proving it (garbage in, valid proof of garbage out), or a verifier choosing to trust an unrelated verification key. Both are upstream of this primitive.
-
-## Interoperability
-
-| Verifier         | Status                | Notes                                                                |
-|------------------|-----------------------|----------------------------------------------------------------------|
-| Aleo snarkVM     | Verification-key target | Verification keys are emittable in BLS12-377 format. Ecosystem-neutral; no co-branding. |
-| Risc0 zkVM       | Verification-key target | Verification keys are emittable in BabyBear-field format.            |
-| Plonky2          | Verification-key target | Roadmap. Goldilocks-field circuits in scope for v0.2.                |
-
-Aleo references throughout this repo describe Aleo snarkVM as a public, ecosystem-neutral verifier. There is no co-branding, no Aleo logo usage, and no claim of partnership.
 
 ## Tools
 
@@ -104,7 +119,7 @@ The backend at `https://hivemorph.onrender.com/v1/zk/*` is RFC-stage. Until it s
 }
 ```
 
-The MCP shim, tool surface, costs, and circuit catalog are stable across the v0.1 RFC. Calling agents can integrate now and receive proofs the moment the backend is live.
+The MCP shim, tool surface, costs, and circuit catalog are stable across the v0.1 RFC. Calling agents can integrate now and consume attestations the moment the backend is live.
 
 ### Settlement
 

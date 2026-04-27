@@ -10,10 +10,10 @@ startCommand:
   url: https://hivemorph.onrender.com/mcp/hive-mcp-zk-attestation
 
 name: hive-mcp-zk-attestation
-displayName: hive-mcp-zk-attestation — verifiable agent state attestations (RFC-stage)
-version: "0.1.0"
+displayName: hive-mcp-zk-attestation — verifiable agent state attestations (RFC-stage, Aleo/Varuna)
+version: "0.1.1"
 description: >
-  RFC-stage MCP shim for verifiable agent state attestations. Groth16 and Plonk proofs of agent state hash + DID, anchored to Base. Aleo snarkVM-compatible verification keys are emittable. Attestation-only — no asset bridging, no custody, no wrapped value. Real Base USDC settlement at $0.05 per attestation. Backend endpoints publish when the v0.1 spec is finalized.
+  Hive ZK attestation MCP server. Agent state proofs targeting Aleo snarkVM (Varuna over BLS12-377) as the primary verification path; native Hive verification is next. Attestation-only — no asset bridging, no custody, no wrapped value. Real Base USDC settlement at $0.05 per attestation. Backend endpoints publish when the v0.1 spec is finalized.
 
 author:
   name: Steve Rotzin
@@ -41,11 +41,14 @@ tags:
   - hive
   - zk
   - zero-knowledge
-  - groth16
-  - plonk
-  - snarkvm
-  - aleo-compatible
-  - risc0-compatible
+  - varuna
+  - bls12-377
+  - kzg10
+  - marlin-ahp
+  - leo-lang
+  - snarkvm-compatible
+  - aleo-mainnet
+  - provable-sdk
   - agent-attestation
   - autonomous-agent
   - base-l2
@@ -54,7 +57,7 @@ tags:
 tools:
   - name: zk_attest_agent_state
     description: >
-      Produce a Groth16 proof of an agent state hash + DID. Attestation-only — emits a proof, not a token; no value crosses chains. Cost $0.05 USDC on Base. Backend RFC-stage; returns backend_pending until rails land.
+      Produce a zero-knowledge attestation of an agent state hash + DID. Primary verification target is Aleo snarkVM (Varuna over BLS12-377); native Hive verification is next. Attestation-only — emits a proof, not a token; no value crosses chains. Cost $0.05 USDC on Base. Backend RFC-stage; returns backend_pending until rails land.
     inputs:
       - name: agent_did
         type: string
@@ -67,19 +70,19 @@ tools:
       - name: circuit
         type: string
         required: false
-        description: "Circuit identifier; defaults to groth16-bn254-agent-state-v1"
+        description: "Circuit identifier; defaults to varuna-bls12377-agent-state-v1 (snarkVM-compatible)"
       - name: public_inputs
         type: array
         required: false
         description: "Optional public inputs as hex strings"
   - name: zk_verify_proof
     description: >
-      Verify a submitted proof against a known verification key. Returns boolean validity plus the verification key fingerprint. Free. Read-only — no settlement, no on-chain write.
+      Verify a submitted attestation against a known verification key. Aleo snarkVM (Varuna/BLS12-377) is the primary verification target via the snark.verify opcode. Returns boolean validity plus the verification key fingerprint. Free. Read-only — no settlement, no on-chain write.
     inputs:
       - name: proof
         type: string
         required: true
-        description: "Hex-encoded proof bytes (Groth16 or Plonk)"
+        description: "Hex-encoded proof bytes (Varuna; Groth16/Plonk research-stage only)"
       - name: verification_key_id
         type: string
         required: true
@@ -90,7 +93,7 @@ tools:
         description: "Public inputs the proof was generated against"
   - name: zk_anchor_to_base
     description: >
-      Write a proof commitment (32-byte hash) to Base via the Hive gateway. Anchors the attestation; does not bridge value or custody assets. Cost $0.02 USDC + L1 gas. Backend RFC-stage; returns backend_pending until rails land.
+      Write an attestation commitment (32-byte hash) to Base via the Hive gateway. Anchors the attestation only; does not bridge value or move state to Aleo. Aleo snarkVM consumes the attestation independently via Leo programs (future hive-leo-circuits repo). Cost $0.02 USDC + L1 gas. Backend RFC-stage; returns backend_pending until rails land.
     inputs:
       - name: proof_commitment
         type: string
@@ -106,7 +109,7 @@ tools:
         description: "Identifier of the verification key referenced by the proof"
   - name: zk_list_circuits
     description: >
-      Enumerate supported circuits and their verification key fingerprints. Includes Groth16, Plonk, and Aleo snarkVM-compatible templates. Free. Read-only.
+      Enumerate supported circuits and verification key fingerprints. Primary: Varuna over BLS12-377 (Aleo snarkVM-compatible). Research-stage: Groth16, Plonk. Future: Risc0, Plonky2. Free. Read-only.
     inputs: []
   - name: zk_query_attestation
     description: >
