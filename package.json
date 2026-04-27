@@ -1,0 +1,59 @@
+{
+  "name": "hive-mcp-zk-attestation",
+  "version": "0.1.0",
+  "description": "RFC-stage MCP shim for verifiable agent state attestations. Groth16/Plonk proofs of agent state hash + DID, anchored to Base. Aleo snarkVM-compatible verification keys. Attestation-only — no asset bridging, no custody.",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "hive-mcp-zk-attestation": "./server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "x402",
+    "a2a",
+    "agentic",
+    "ai-agent",
+    "autonomous-agent",
+    "hive",
+    "hive-civilization",
+    "zk",
+    "zero-knowledge",
+    "zk-proof",
+    "groth16",
+    "plonk",
+    "snarkvm",
+    "aleo-compatible",
+    "risc0-compatible",
+    "agent-attestation",
+    "agent-state-proof",
+    "verifiable-agent",
+    "private-agent-execution",
+    "agent-audit-trail",
+    "autonomous-systems",
+    "dual-use",
+    "commercial-grade",
+    "usdc",
+    "base",
+    "base-l2",
+    "real-rails",
+    "on-chain-anchoring"
+  ],
+  "author": "Steve Rotzin <steve@thehiveryiq.com> (https://www.thehiveryiq.com)",
+  "license": "MIT",
+  "homepage": "https://github.com/srotzin/hive-mcp-zk-attestation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srotzin/hive-mcp-zk-attestation"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
