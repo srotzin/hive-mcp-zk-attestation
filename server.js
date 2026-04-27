@@ -120,7 +120,7 @@ const SERVICE_CFG = {
     'autonomous-systems', 'dual-use', 'commercial-grade',
     'usdc', 'base', 'base-l2', 'real-rails', 'on-chain-anchoring',
   ],
-  externalUrl: 'https://hive-mcp-gateway.onrender.com/zk-attestation',
+  externalUrl: 'https://hive-mcp-zk-attestation.onrender.com',
   gatewayMount: '/zk-attestation',
   version: '0.1.1',
   pricing: [
