@@ -24,6 +24,75 @@ const app = express();
 app.use(express.json({ limit: '512kb' }));
 
 const PORT = process.env.PORT || 3000;
+// ─── BOGO pay-front helpers ───────────────────────────────────────────────
+// did_call_count tracks paid calls per DID for first-call-free and loyalty
+// freebies. Schema lives in a dedicated DB so it never touches service data.
+import _BogoDatabase from 'better-sqlite3';
+const _bogoDB = new _BogoDatabase(process.env.BOGO_DB_PATH || '/tmp/bogo_zk_attest.db');
+_bogoDB.pragma('journal_mode = WAL');
+_bogoDB.exec(
+  'CREATE TABLE IF NOT EXISTS did_call_count ' +
+  '(did TEXT PRIMARY KEY, paid_calls INTEGER NOT NULL DEFAULT 0)'
+);
+
+const _bogoGetStmt = _bogoDB.prepare(
+  'SELECT paid_calls FROM did_call_count WHERE did = ?'
+);
+const _bogoUpsertStmt = _bogoDB.prepare(
+  'INSERT INTO did_call_count (did, paid_calls) VALUES (?, 1) ' +
+  'ON CONFLICT(did) DO UPDATE SET paid_calls = paid_calls + 1'
+);
+
+function _bogoCheck(did) {
+  if (!did) return { free: false };
+  const row = _bogoGetStmt.get(did);
+  const n   = row ? row.paid_calls : 0;
+  if (n === 0)        return { free: true, reason: 'first_call_free' };
+  if (n % 6 === 0)    return { free: true, reason: 'loyalty_freebie' };
+  return { free: false };
+}
+
+function _bogoIncrement(did) {
+  if (did) _bogoUpsertStmt.run(did);
+}
+
+const BOGO_BLOCK = {
+  first_call_free: true,
+  loyalty_threshold: 6,
+  loyalty_message:
+    "Every 6th paid call is free. Present your DID via 'x-hive-did' header to track progress.",
+};
+// ─────────────────────────────────────────────────────────────────────────
+
+async function _verifyUsdcPayment(tx_hash, min_usd) {
+  if (!tx_hash || !/^0x[0-9a-fA-F]{64}$/.test(tx_hash))
+    return { ok: false, reason: 'invalid_tx_hash' };
+  const { ethers } = await import('ethers');
+  const provider = new ethers.JsonRpcProvider(
+    process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+  );
+  let receipt;
+  try   { receipt = await provider.getTransactionReceipt(tx_hash); }
+  catch (err) { return { ok: false, reason: `rpc_error: ${err.message}` }; }
+  if (!receipt)            return { ok: false, reason: 'tx_not_found_or_pending' };
+  if (receipt.status !== 1) return { ok: false, reason: 'tx_reverted' };
+  const USDC_ADDR    = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+  const WALLET_ADDR  = '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e';
+  const XFER_TOPIC   = ethers.id('Transfer(address,address,uint256)');
+  let total = 0n;
+  for (const log of (receipt.logs || [])) {
+    if (log.address.toLowerCase() !== USDC_ADDR.toLowerCase()) continue;
+    if (log.topics?.[0] !== XFER_TOPIC) continue;
+    if (('0x' + log.topics[2].slice(26).toLowerCase()) !== WALLET_ADDR.toLowerCase()) continue;
+    total += BigInt(log.data);
+  }
+  if (total === 0n)  return { ok: false, reason: 'no_transfer_to_wallet' };
+  const amount_usd = Number(total) / 1e6;
+  if (amount_usd + 1e-9 < min_usd) return { ok: false, reason: 'underpaid', amount_usd };
+  return { ok: true, amount_usd };
+}
+
+
 const HIVE_BASE = process.env.HIVE_BASE || 'https://hivemorph.onrender.com';
 
 const BACKEND_PENDING = {
@@ -243,6 +312,73 @@ async function executeTool(name, args) {
       throw new Error(`Unknown tool: ${name}`);
   }
 }
+
+// ─── POST /v1/attest — pay-front for issuing a zk attestation ────────────
+// Returns 402 + BOGO block with no tx_hash. First-call-free for new DIDs.
+// On payment: submits to HIVE_BASE /v1/zk/attest when live; queues otherwise.
+app.post('/v1/attest', async (req, res) => {
+  const PRICE = 0.05;
+  const did     = req.headers['x-hive-did'] || req.body?.agent_did || null;
+  const tx_hash = req.body?.tx_hash || req.headers['x402-tx-hash'] || null;
+
+  const bogo = _bogoCheck(did);
+  if (bogo.free) {
+    _bogoIncrement(did);
+    return res.json({
+      ok: true, bogo_applied: bogo.reason,
+      attestation: {
+        agent_did: did,
+        state_hash: req.body?.state_hash || null,
+        circuit:    req.body?.circuit || 'varuna-bls12377-agent-state-v1',
+        status:     'queued',
+        issued_at:  new Date().toISOString(),
+      },
+    });
+  }
+
+  if (!tx_hash) {
+    return res.status(402).json({
+      error: 'payment_required',
+      x402: {
+        type: 'x402', version: '1', kind: 'zk_attest',
+        asking_usd: 0.05, accept_min_usd: 0.05,
+        asset: 'USDC', asset_address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        network: 'base', pay_to: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e',
+        nonce: Math.random().toString(36).slice(2),
+        issued_ms: Date.now(),
+      },
+      bogo: BOGO_BLOCK,
+      bogo_first_call_free: true,
+      bogo_loyalty_threshold: 6,
+      bogo_pitch: "Pay this once, your 6th call is on the house. New here? Add header x-hive-did to claim your first call free.",
+      note: `Submit tx_hash in body or 'x402-tx-hash' header. Asking 0.05 USDC on Base to 0x15184bf50b3d3f52b60434f8942b7d52f2eb436e.`,
+      did: did || null,
+    });
+  }
+
+  const v = await _verifyUsdcPayment(tx_hash, PRICE);
+  if (!v.ok) return res.status(402).json({ error: 'payment_invalid', reason: v.reason, tx_hash });
+
+  _bogoIncrement(did);
+  // Forward to backend when live; return queued receipt if backend is pending.
+  let attestation = {
+    agent_did: did,
+    state_hash: req.body?.state_hash || null,
+    circuit:    req.body?.circuit || 'varuna-bls12377-agent-state-v1',
+    status:     'queued',
+    issued_at:  new Date().toISOString(),
+  };
+  try {
+    const backendRes = await fetch(`${HIVE_BASE}/v1/zk/attest`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ agent_did: did, state_hash: req.body?.state_hash, circuit: req.body?.circuit }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (backendRes.ok) attestation = { ...attestation, ...await backendRes.json(), status: 'issued' };
+  } catch { /* backend pending — queued receipt is authoritative */ }
+  res.json({ ok: true, billed_usd: v.amount_usd, tx_hash, attestation });
+});
 
 app.post('/mcp', async (req, res) => {
   const { jsonrpc, id, method, params } = req.body || {};
