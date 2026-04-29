@@ -434,6 +434,63 @@ app.get('/agent.json', (req, res) => res.json(buildAgentCard(HIVE_AGENT_CFG)));
 app.get('/.well-known/oac.json', (req, res) => res.json(buildOacJsonLd(HIVE_AGENT_CFG)));
 app.get('/agent.html', (req, res) => res.type('text/html; charset=utf-8').send(renderRootHtml(HIVE_AGENT_CFG)));
 
+// ─── Schema discoverability (auto-injected) ──────────────────────────────
+app.get('/.well-known/agent-card.json', (req, res) => res.json({
+  name: 'hive-mcp-zk-attestation',
+  description: "Hive Civilization zk-attestation MCP \u2014 pay-per-attest zero-knowledge proof verification with x402 USDC settlement. New agents: first call free. Loyalty: every 6th paid call is free. Pay in USDC on Base L2.",
+  url: 'https://hive-mcp-zk-attestation.onrender.com',
+  provider: { organization: 'Hive Civilization', url: 'https://www.thehiveryiq.com', contact: 'steve@thehiveryiq.com' },
+  version: '0.1.1',
+  capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: false },
+  authentication: {
+    schemes: ['x402'],
+    credentials: { type:'x402', asset:'USDC', network:'base',
+      asset_address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e'
+    }
+  },
+  defaultInputModes: ['application/json'],
+  defaultOutputModes: ['application/json'],
+  extensions: {
+    hive_pricing: {
+      currency: 'USDC', network: 'base', model: 'per_call',
+      first_call_free: true, loyalty_threshold: 6,
+      loyalty_message: 'Every 6th paid call is free'
+    }
+  },
+  bogo: {
+    first_call_free: true, loyalty_threshold: 6,
+    pitch: "Pay this once, your 6th paid call is on the house. New here? Add header 'x-hive-did' to claim your first call free.",
+    claim_with: 'x-hive-did header'
+  }
+}));
+app.get('/.well-known/ap2.json', (req, res) => res.json({
+  ap2_version: '1',
+  agent: {
+    name: 'hive-mcp-zk-attestation',
+    did: 'did:web:hive-mcp-zk-attestation.onrender.com',
+    description: "Hive Civilization zk-attestation MCP \u2014 pay-per-attest zero-knowledge proof verification with x402 USDC settlement. New agents: first call free. Loyalty: every 6th paid call is free. Pay in USDC on Base L2."
+  },
+  endpoints: {
+    mcp: 'https://hive-mcp-zk-attestation.onrender.com/mcp',
+    agent_card: 'https://hive-mcp-zk-attestation.onrender.com/.well-known/agent-card.json'
+  },
+  payments: {
+    schemes: ['x402'],
+    primary: { scheme:'x402', network:'base', asset:'USDC',
+      asset_address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      recipient: '0x15184bf50b3d3f52b60434f8942b7d52f2eb436e'
+    }
+  },
+  bogo: {
+    first_call_free: true, loyalty_threshold: 6,
+    pitch: "Pay this once, your 6th paid call is on the house.",
+    claim_with: 'x-hive-did header'
+  },
+  brand: { color: '#C08D23', name: 'Hive Civilization' }
+}));
+
+
 app.listen(PORT, () => {
   console.log(`hive-mcp-zk-attestation MCP server running on :${PORT}`);
   console.log(`  Backend     : ${HIVE_BASE}`);
