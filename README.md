@@ -1,5 +1,7 @@
 # hive-mcp-zk-attestation
 
+[![srotzin/hive-mcp-zk-attestation MCP server](https://glama.ai/mcp/servers/srotzin/hive-mcp-zk-attestation/badges/score.svg)](https://glama.ai/mcp/servers/srotzin/hive-mcp-zk-attestation)
+
 Verifiable agent state attestations for the autonomous agent economy. RFC-stage v0.1.1.
 
 A Model Context Protocol shim that lets any autonomous agent emit a zero-knowledge attestation of its internal state hash and DID. The primary verification target is Aleo snarkVM (Varuna over BLS12-377), with native Hive verification next, and Risc0 / Plonky2 referenced as future research targets. Attestation-only. No asset bridging. No custody. No wrapped value.
